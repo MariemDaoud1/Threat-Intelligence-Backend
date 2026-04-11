@@ -1,20 +1,23 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.api.v1.deps import get_db
+from app.api.v1.deps import get_db, verify_api_key
 from app.schemas.ioc import IOCCreate, IOCRead
 from app.services.ioc_service import IOCService
+from app.rate_limiter import limiter
 import uuid
 
 router = APIRouter()
 
 @router.post("/iocs/submit", status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit("10/minute")
 async def submit_ioc(
+    request: Request,
     data: IOCCreate,
+    org_id: uuid.UUID = Depends(verify_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    fake_org_id = uuid.UUID("00000000-0000-0000-0000-000000000001")  
     svc = IOCService(db)
-    ioc = await svc.submit(data, fake_org_id)
+    ioc = await svc.submit(data, org_id)
     return {"data": {"id": str(ioc.id), "status": ioc.status}, "meta": {}, "error": None}
 
 @router.get("/iocs")

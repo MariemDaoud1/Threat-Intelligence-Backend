@@ -1,6 +1,6 @@
 import uuid
-from sqlalchemy import String, SmallInteger, CheckConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import String, SmallInteger, CheckConstraint, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.db.base import Base
 
@@ -8,7 +8,7 @@ class Organisation(Base):
     __tablename__ = "organisations"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid(), default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     siret: Mapped[str] = mapped_column(String(14), unique=True, nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
@@ -18,4 +18,5 @@ class Organisation(Base):
         SmallInteger,
         CheckConstraint('trust_score BETWEEN 0 AND 100', name='check_trust_score_range'), default=0)
     status: Mapped[str] = mapped_column(String(20), default="pending")
+    iocs: Mapped[list["IOC"]] = relationship("IOC", back_populates="organisation")
     

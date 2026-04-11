@@ -1,8 +1,40 @@
-.venv/
+# Python
 __pycache__/
+*.py[cod]
 *.pyc
+*.so
+.venv/
+venv/
+
+# Environment
 .env
 .env.local
-*.egg-info/
+!.env.example
+
+# Testing & Cache
+.coverage
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# IDE
+.vscode/
+!.vscode/settings.json
+.idea/
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+*.egg-info/
 postgres_data/
+
+# Future (ML, Celery, etc.)
+models/
+data/
+*.pkl
+celerybeat-schedule

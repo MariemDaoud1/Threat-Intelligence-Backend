@@ -1,6 +1,9 @@
 from fastapi import FastAPI
-from app.config import settings
+from slowapi.errors import RateLimitExceeded
+from slowapi.extension import _rate_limit_exceeded_handler
 from app.api.v1.iocs import router as iocs_router
+from app.api.v1.admin import router as admin_router
+from app.rate_limiter import limiter
 
 app = FastAPI(
     title="Collaborative Threat Intelligence Platform",
@@ -8,6 +11,9 @@ app = FastAPI(
     version="0.1.0",
     docs_url="/docs",
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 @app.get("/")
 async def health_check():
@@ -18,3 +24,4 @@ async def health_check():
     }
 
 app.include_router(iocs_router, prefix="/api/v1", tags=["IOCs"])
+app.include_router(admin_router, prefix="/api/v1", tags=["Admin"])
