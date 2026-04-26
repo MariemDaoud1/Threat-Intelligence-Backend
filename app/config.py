@@ -12,6 +12,7 @@ def _to_localhost_on_windows(url: str, docker_host: str) -> str:
 
 class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    API_KEY_EXPIRE_DAYS: int = 90
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -21,6 +22,14 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost:5432/threatintel"
     REDIS_URL: str = "redis://localhost:6379/0"
     SECRET_KEY: str = "change-me"
+    SMTP_ENABLED: bool = False
+    SMTP_HOST: str = "localhost"
+    SMTP_PORT: int = 1025
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = "noreply@threatintel.local"
+    SMTP_STARTTLS: bool = False
+    SMTP_USE_SSL: bool = False
 
 settings = Settings()
 settings.DATABASE_URL = _to_localhost_on_windows(settings.DATABASE_URL, "db")

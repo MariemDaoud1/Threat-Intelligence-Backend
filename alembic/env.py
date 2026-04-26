@@ -12,10 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.db.base import Base
 from app.config import settings
-
-from app.models.organisation import Organisation
-from app.models.ioc import IOC
-from app.models.blockchain_record import BlockchainRecord
+import app.models.register  
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config

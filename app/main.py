@@ -4,6 +4,7 @@ from slowapi.extension import _rate_limit_exceeded_handler
 from app.api.v1.iocs import router as iocs_router
 from app.api.v1.admin import router as admin_router
 from app.rate_limiter import limiter
+import app.models.register  
 
 app = FastAPI(
     title="Collaborative Threat Intelligence Platform",

@@ -16,6 +16,7 @@ venv/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+*.txt
 
 # IDE
 .vscode/
@@ -34,7 +35,6 @@ logs/
 postgres_data/
 
 # Future (ML, Celery, etc.)
-models/
 data/
 *.pkl
 celerybeat-schedule
