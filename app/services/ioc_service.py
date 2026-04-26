@@ -1,6 +1,6 @@
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import String, cast, select
 from app.models.ioc import IOC, IOCStatus
 from app.schemas.ioc import IOCCreate
 
@@ -23,8 +23,10 @@ class IOCService:
     
     #fetching validated IOCs with cursor-based pagination
     async def get_validated(self, after: UUID | None = None, limit: int = 50) -> list[IOC]:
+        # Keep compatibility with legacy enum labels already present in some databases.
+        validated_labels = ["validated", "VALIDATED", "VALIDaTED"]
         q = select(IOC)\
-            .where(IOC.status == IOCStatus.VALIDATED)\
+            .where(cast(IOC.status, String).in_(validated_labels))\
             .order_by(IOC.submitted_at.desc())\
             .limit(limit)
 

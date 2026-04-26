@@ -12,7 +12,9 @@ from app.api.v1.deps import get_db, invalidate_api_key_cache
 from app.config import settings
 from app.models.organisation import Organisation
 from app.rate_limiter import limiter
+from app.schemas.assets import ContributorUserRead, MalwareSampleRead, ThreatActorRead
 from app.services.auth_service import AuthService, create_access_token, verify_jwt
+from app.services.asset_service import AssetService
 from app.services.email_service import EmailService
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -32,6 +34,22 @@ class ApiKeyStatusResponse(BaseModel):
     api_key_expires_at: datetime | None
     api_key_revoked_at: datetime | None
     api_key_version: int
+
+
+class AssetListResponse(BaseModel):
+    data: list
+    error: None = None
+
+
+class AssetListMetaResponse(BaseModel):
+    page_size: int
+    next_cursor: None = None
+
+
+class AssetCollectionResponse(BaseModel):
+    data: list
+    meta: AssetListMetaResponse
+    error: None = None
 
 
 async def _rotate_and_email_api_key(org: Organisation, db: AsyncSession) -> datetime | None:
@@ -198,3 +216,51 @@ async def get_organisation_api_key_status(
         api_key_revoked_at=org.api_key_revoked_at,
         api_key_version=org.api_key_version,
     )
+
+
+@router.get("/malware-samples")
+async def list_malware_samples(
+    org_id: uuid.UUID | None = None,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+    token: str = Depends(verify_jwt),
+):
+    svc = AssetService(db)
+    samples = await svc.list_malware_samples(org_id=org_id, limit=limit)
+    return {
+        "data": [MalwareSampleRead.model_validate(item) for item in samples],
+        "meta": {"page_size": limit, "next_cursor": None},
+        "error": None,
+    }
+
+
+@router.get("/threat-actors")
+async def list_threat_actors(
+    org_id: uuid.UUID | None = None,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+    token: str = Depends(verify_jwt),
+):
+    svc = AssetService(db)
+    actors = await svc.list_threat_actors(org_id=org_id, limit=limit)
+    return {
+        "data": [ThreatActorRead.model_validate(item) for item in actors],
+        "meta": {"page_size": limit, "next_cursor": None},
+        "error": None,
+    }
+
+
+@router.get("/contributor-users")
+async def list_contributor_users(
+    org_id: uuid.UUID | None = None,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+    token: str = Depends(verify_jwt),
+):
+    svc = AssetService(db)
+    users = await svc.list_contributor_users(org_id=org_id, limit=limit)
+    return {
+        "data": [ContributorUserRead.model_validate(item) for item in users],
+        "meta": {"page_size": limit, "next_cursor": None},
+        "error": None,
+    }
