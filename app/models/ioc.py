@@ -16,7 +16,7 @@ class IOCType(str, enum.Enum):
 
 class IOCStatus(str, enum.Enum):
     PENDING = "pending"
-    VALIDaTED = "validated"
+    VALIDATED = "validated"
     REJECTED = "rejected"
 
 class IOC(Base):
