@@ -1,3 +1,4 @@
+from collections.abc import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Security, HTTPException, status, Depends
 from fastapi.security import APIKeyHeader
@@ -12,7 +13,7 @@ from app.services.auth_service import AuthService
 from app.config import settings
 
 # Dependency pour la session DB
-async def get_db() -> AsyncSession:
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         try:
             yield session
@@ -48,12 +49,27 @@ async def verify_api_key(
         )
     )
     for org in result.scalars():
+        if not org.api_key_hash or not org.api_key_salt:
+            continue
         if org.api_key_expires_at is not None and org.api_key_expires_at <= now:
             continue
-        if AuthService.verify_key(api_key, org.api_key_hash, org.api_key_salt):
+        try:
+            key_is_valid = AuthService.verify_key(api_key, org.api_key_hash, org.api_key_salt)
+        except (ValueError, TypeError):
+            # Skip malformed legacy key material instead of failing the request.
+            continue
+        if key_is_valid:
             org.api_key_last_used_at = now
-            await db.commit()
-            await r.setex(f"apikey:{api_key}", 300, str(org.id))   # cache 5 minutes
+            try:
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise
+            try:
+                await r.setex(f"apikey:{api_key}", 300, str(org.id))   # cache 5 minutes
+            except Exception:
+                # Cache should never block API key verification.
+                pass
             return org.id
 
     raise HTTPException(
