@@ -1,5 +1,8 @@
-import secrets
+import base64
 import hashlib
+import hmac
+import secrets
+import string
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, status
@@ -26,6 +29,32 @@ class AuthService:
         ).hexdigest()
         return secrets.compare_digest(h, stored_hash)
 
+    @staticmethod
+    def generate_temp_password(length: int = 16) -> str:
+        alphabet = string.ascii_letters + string.digits
+        return "".join(secrets.choice(alphabet) for _ in range(length))
+
+    @staticmethod
+    def hash_password(password: str, salt: str | None = None) -> str:
+        if salt is None:
+            salt = secrets.token_hex(16)
+        digest = hashlib.pbkdf2_hmac(
+            "sha256",
+            password.encode(),
+            bytes.fromhex(salt),
+            390000,
+        )
+        return f"{salt}${base64.b64encode(digest).decode()}"
+
+    @staticmethod
+    def verify_password(password: str, stored_hash: str) -> bool:
+        try:
+            salt, encoded_digest = stored_hash.split("$", 1)
+        except ValueError:
+            return False
+        expected = AuthService.hash_password(password, salt)
+        return hmac.compare_digest(expected, stored_hash)
+
 
 # JWT METHODS (pour Admin)
 ALGORITHM = "HS256"
@@ -37,6 +66,10 @@ def create_access_token(subject: str) -> str:
     expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode = {"sub": subject, "exp": expire, "type": "access"}
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
+
+
+def decode_access_token(token: str) -> dict:
+    return jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
 
 
 def verify_jwt(token: str = Depends(oauth2_scheme)) -> str:

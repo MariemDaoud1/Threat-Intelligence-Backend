@@ -3,6 +3,8 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.extension import _rate_limit_exceeded_handler
 from app.api.v1.iocs import router as iocs_router
 from app.api.v1.admin import router as admin_router
+from app.api.v1.register import router as register_router
+from app.api.v1.contributor_auth import router as contributor_router
 from app.rate_limiter import limiter
 import app.models.register  
 
@@ -26,3 +28,5 @@ async def health_check():
 
 app.include_router(iocs_router, prefix="/api/v1", tags=["IOCs"])
 app.include_router(admin_router, prefix="/api/v1", tags=["Admin"])
+app.include_router(register_router, prefix="/api/v1", tags=["Registration"])
+app.include_router(contributor_router, prefix="/api/v1", tags=["Contributors"])

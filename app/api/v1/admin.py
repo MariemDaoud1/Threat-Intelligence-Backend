@@ -1,4 +1,5 @@
 import asyncio
+import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -10,7 +11,10 @@ import uuid
 
 from app.api.v1.deps import get_db, invalidate_api_key_cache
 from app.config import settings
-from app.models.organisation import Organisation
+from app.models.organisation import Organisation, OrgStatus
+from app.models.contributor_user import ContributorUser
+from app.models.ioc import IOC, IOCStatus
+from app.models.blockchain_record import BlockchainRecord
 from app.rate_limiter import limiter
 from app.schemas.assets import ContributorUserRead, MalwareSampleRead, ThreatActorRead
 from app.services.auth_service import AuthService, create_access_token, verify_jwt
@@ -52,7 +56,7 @@ class AssetCollectionResponse(BaseModel):
     error: None = None
 
 
-async def _rotate_and_email_api_key(org: Organisation, db: AsyncSession) -> datetime | None:
+async def _rotate_api_key(org: Organisation) -> tuple[str, datetime | None]:
     raw_key, key_hash, key_salt = AuthService.generate_api_key()
     now = datetime.now(timezone.utc)
     expires_at = None
@@ -66,20 +70,25 @@ async def _rotate_and_email_api_key(org: Organisation, db: AsyncSession) -> date
     org.api_key_expires_at = expires_at
     org.api_key_revoked_at = None
     org.api_key_version = (org.api_key_version or 0) + 1
+    return raw_key, expires_at
 
-    try:
-        await asyncio.to_thread(EmailService.send_api_key_email, org.email, org.name, raw_key)
-    except Exception as exc:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Unable to send API key email: {exc}"
-        )
 
-    await db.commit()
-    await invalidate_api_key_cache()
-    raw_key = None
-    return expires_at
+async def _send_contributor_access_email(org: Organisation, temporary_password: str) -> None:
+    await asyncio.to_thread(
+        EmailService.send_contributor_welcome_email,
+        org.email,
+        org.name,
+        temporary_password,
+    )
+
+
+async def _send_rejection_email(org: Organisation, reason: str | None = None) -> None:
+    await asyncio.to_thread(
+        EmailService.send_rejection_email,
+        org.email,
+        org.name,
+        reason,
+    )
 
 
 #  LOGIN  
@@ -103,7 +112,7 @@ async def list_pending_requests(
     token: str = Depends(verify_jwt)
 ):
     try:
-        result = await db.execute(select(Organisation).where(Organisation.status == "pending"))
+        result = await db.execute(select(Organisation).where(Organisation.status == OrgStatus.pending))
         pending_orgs = result.scalars().all()
     except SQLAlchemyError:
         raise HTTPException(
@@ -133,9 +142,34 @@ async def approve_organisation(
     org = result.scalar_one_or_none()
     if org is None:
         raise HTTPException(status_code=404, detail="Organisation not found")
+    if org.status == OrgStatus.approved:
+        raise HTTPException(status_code=400, detail="Organisation already approved")
 
-    org.status = "approved"
-    expires_at = await _rotate_and_email_api_key(org, db)
+    temporary_password = AuthService.generate_temp_password()
+    contributor = await db.execute(select(ContributorUser).where(ContributorUser.org_id == org.id))
+    existing_contributor = contributor.scalar_one_or_none()
+    if existing_contributor is None:
+        existing_contributor = ContributorUser(
+            org_id=org.id,
+            email=org.email,
+            hashed_password=AuthService.hash_password(temporary_password),
+            must_change_password=True,
+            is_active=True,
+        )
+        db.add(existing_contributor)
+
+    org.status = OrgStatus.approved
+    raw_key, expires_at = await _rotate_api_key(org)
+    await db.commit()
+    await invalidate_api_key_cache()
+    try:
+        await asyncio.to_thread(EmailService.send_api_key_email, org.email, org.name, raw_key)
+        await _send_contributor_access_email(org, temporary_password)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Unable to send contributor welcome email: {exc}",
+        )
     return {
         "message": "Organisation approved and API key sent by email",
         "api_key_expires_at": expires_at,
@@ -149,12 +183,73 @@ async def revoke_organisation(
     token: str = Depends(verify_jwt)
 ):
     result = await db.execute(
-        update(Organisation).where(Organisation.id == org_id).values(status="revoked")
+        update(Organisation).where(Organisation.id == org_id).values(status=OrgStatus.revoked)
     )
     await db.commit()
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="Organisation not found")
     return {"message": "Organisation revoked successfully"}
+
+
+@router.post("/reject/{org_id}")
+async def reject_organisation(
+    org_id: uuid.UUID,
+    reason: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    token: str = Depends(verify_jwt),
+):
+    result = await db.execute(select(Organisation).where(Organisation.id == org_id))
+    org = result.scalar_one_or_none()
+    if org is None:
+        raise HTTPException(status_code=404, detail="Organisation not found")
+
+    org.status = OrgStatus.revoked
+    try:
+        await _send_rejection_email(org, reason)
+    except Exception as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Unable to send rejection email: {exc}",
+        )
+    await db.commit()
+    return {"message": "Organisation rejected successfully"}
+
+
+@router.post("/validate-pending/{ioc_id}")
+async def validate_pending_ioc(
+    ioc_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    token: str = Depends(verify_jwt),
+):
+    result = await db.execute(select(IOC).where(IOC.id == ioc_id))
+    ioc = result.scalar_one_or_none()
+    if ioc is None:
+        raise HTTPException(status_code=404, detail="IOC not found")
+    if ioc.status != IOCStatus.PENDING:
+        raise HTTPException(status_code=400, detail="IOC must be pending before validation")
+
+    ioc.status = IOCStatus.VALIDATED
+    ioc.validated_at = datetime.now(timezone.utc)
+
+    tx_hash = f"0x{secrets.token_hex(32)}"
+    block_number = int(datetime.now(timezone.utc).timestamp())
+    record = await db.execute(select(BlockchainRecord).where(BlockchainRecord.ioc_id == ioc.id))
+    existing_record = record.scalar_one_or_none()
+    if existing_record is None:
+        db.add(BlockchainRecord(ioc_id=ioc.id, tx_hash=tx_hash, block_number=block_number))
+    else:
+        existing_record.tx_hash = tx_hash
+        existing_record.block_number = block_number
+        existing_record.recorded_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    return {
+        "message": "IOC validated and recorded",
+        "ioc_id": str(ioc.id),
+        "tx_hash": tx_hash,
+        "block_number": block_number,
+    }
 
 
 @router.post("/organisations/{org_id}/api-key/rotate")
@@ -170,7 +265,16 @@ async def rotate_organisation_api_key(
     if org.status != "approved":
         raise HTTPException(status_code=400, detail="Organisation must be approved before rotating API key")
 
-    expires_at = await _rotate_and_email_api_key(org, db)
+    raw_key, expires_at = await _rotate_api_key(org)
+    await db.commit()
+    await invalidate_api_key_cache()
+    try:
+        await asyncio.to_thread(EmailService.send_api_key_email, org.email, org.name, raw_key)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Unable to send API key email: {exc}",
+        )
     return {
         "message": "API key rotated and sent by email",
         "api_key_expires_at": expires_at,
