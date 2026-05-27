@@ -9,8 +9,8 @@ class MalwareSampleRead(BaseModel):
     name: str
     family: str
     description: str
-    hash_md5: str
-    hash_sha256: str
+    hash_md5: str | None
+    hash_sha256: str | None
     capabilities: list[str] | None
     org_id: uuid.UUID
     tlp: str
@@ -37,8 +37,9 @@ class ThreatActorRead(BaseModel):
 
 class ContributorUserRead(BaseModel):
     id: uuid.UUID
-    org_id: uuid.UUID
+    org_id: uuid.UUID | None
     email: str
+    role: str
     must_change_password: bool
     is_active: bool | None
     created_at: datetime | None

@@ -1,0 +1,106 @@
+[
+  {
+    "inputs": [],
+    "name": "InvalidContentHash",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "InvalidIocId",
+    "type": "error"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "iocId",
+        "type": "bytes32"
+      },
+      {
+        "indexed": true,
+        "internalType": "enum ThreatChainIOCVerifier.IOCEventType",
+        "name": "eventType",
+        "type": "uint8"
+      },
+      {
+        "indexed": false,
+        "internalType": "bytes32",
+        "name": "contentHash",
+        "type": "bytes32"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "recordedBy",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "timestamp",
+        "type": "uint256"
+      }
+    ],
+    "name": "IOCEventRecorded",
+    "type": "event"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "iocId",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "enum ThreatChainIOCVerifier.IOCEventType",
+        "name": "eventType",
+        "type": "uint8"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "contentHash",
+        "type": "bytes32"
+      }
+    ],
+    "name": "recordIOCEvent",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "iocId",
+        "type": "bytes32"
+      }
+    ],
+    "name": "getLatestIOCState",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "exists",
+        "type": "bool"
+      },
+      {
+        "internalType": "enum ThreatChainIOCVerifier.IOCEventType",
+        "name": "eventType",
+        "type": "uint8"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "contentHash",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "uint64",
+        "name": "timestamp",
+        "type": "uint64"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]

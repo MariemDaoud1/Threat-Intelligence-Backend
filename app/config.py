@@ -1,4 +1,5 @@
 import os
+import json
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,7 +31,27 @@ class Settings(BaseSettings):
     SMTP_FROM_EMAIL: str = "noreply@threatintel.local"
     SMTP_STARTTLS: bool = False
     SMTP_USE_SSL: bool = False
+    ETH_RPC_URL: str = ""
+    ETH_PRIVATE_KEY: str = ""
+    ETH_CHAIN_ID: int = 11155111
+    ETH_CONTRACT_ADDRESS: str = ""
+    ETH_TX_TIMEOUT_SECONDS: int = 120
+    CORS_ALLOW_ORIGINS: list[str] | str = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
 
 settings = Settings()
 settings.DATABASE_URL = _to_localhost_on_windows(settings.DATABASE_URL, "db")
 settings.REDIS_URL = _to_localhost_on_windows(settings.REDIS_URL, "redis")
+
+if isinstance(settings.CORS_ALLOW_ORIGINS, str):
+    raw = settings.CORS_ALLOW_ORIGINS.strip()
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            settings.CORS_ALLOW_ORIGINS = [str(origin).strip() for origin in parsed if str(origin).strip()]
+        else:
+            settings.CORS_ALLOW_ORIGINS = [raw]
+    except json.JSONDecodeError:
+        settings.CORS_ALLOW_ORIGINS = [origin.strip() for origin in raw.split(",") if origin.strip()]

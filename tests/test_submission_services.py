@@ -65,7 +65,7 @@ class _Org:
 
 
 @pytest.mark.asyncio
-async def test_malware_submit_validated_for_trusted_org():
+async def test_malware_submit_approved_for_trusted_org():
     org_id = uuid.uuid4()
     session = _FakeSession(org=_Org(trust_score=80), execute_items=[[]])
     service = MalwareService(session)
@@ -81,7 +81,7 @@ async def test_malware_submit_validated_for_trusted_org():
 
     sample = await service.submit(payload, org_id)
 
-    assert sample.status is MalwareStatus.validated
+    assert sample.status is MalwareStatus.approved
     assert sample.org_id == org_id
     assert session.committed == 1
     assert session.added and session.added[0].name == payload.name
@@ -131,7 +131,29 @@ async def test_malware_submit_rejects_duplicate_hashes():
 
 
 @pytest.mark.asyncio
-async def test_threat_actor_submit_validated_for_trusted_org():
+async def test_malware_submit_rejects_duplicate_md5_when_sha256_missing():
+    org_id = uuid.uuid4()
+    session = _FakeSession(org=_Org(trust_score=80), execute_items=[[object()]])
+    service = MalwareService(session)
+    payload = MalwareCreate(
+        name="Duplicate MD5 Sample",
+        family=MalwareFamily.botnet,
+        description="Duplicate md5 only",
+        hash_md5="cccccccccccccccccccccccccccccccc",
+        hash_sha256=None,
+        capabilities=None,
+        tlp="green",
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.submit(payload, org_id)
+
+    assert exc_info.value.status_code == 409
+    assert session.committed == 0
+
+
+@pytest.mark.asyncio
+async def test_threat_actor_submit_approved_for_trusted_org():
     org_id = uuid.uuid4()
     session = _FakeSession(org=_Org(trust_score=90), execute_items=[[]])
     service = ThreatActorService(session)
@@ -146,7 +168,7 @@ async def test_threat_actor_submit_validated_for_trusted_org():
 
     actor = await service.submit(payload, org_id)
 
-    assert actor.status is ThreatActorStatus.validated
+    assert actor.status is ThreatActorStatus.approved
     assert actor.org_id == org_id
     assert session.committed == 1
 

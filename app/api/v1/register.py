@@ -7,6 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.session import AsyncSessionLocal
 from app.models.organisation import Organisation, OrgStatus
 from app.schemas.organisation import OrgRegisterRequest, OrgRead
+from app.services.trust_service import TrustService
 
 router = APIRouter(prefix="/register", tags=["Registration"])
 
@@ -61,7 +62,7 @@ async def register_organisation(
             description=data.description,
             country=data.country,
             status=OrgStatus.pending,
-            trust_score=0
+            trust_score=TrustService.DEFAULT_NEW_ORG_SCORE,
         )
 
         db.add(org)

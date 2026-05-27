@@ -42,8 +42,10 @@ $$;
         )
 
     # Now that the new value is committed, normalize malformed rows.
+    # Compare through text cast so this stays safe even when the malformed enum
+    # label does not exist in the current iocstatus type.
     op.execute(
-        "UPDATE iocs SET status = 'VALIDATED' WHERE status = 'VALIDaTED';"
+        "UPDATE iocs SET status = 'VALIDATED' WHERE status::text = 'VALIDaTED';"
     )
 
 

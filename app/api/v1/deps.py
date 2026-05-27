@@ -1,18 +1,21 @@
 from collections.abc import AsyncGenerator
-from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import Security, HTTPException, status, Depends
-from fastapi.security import APIKeyHeader
-import redis.asyncio as aioredis
-import uuid
 from datetime import datetime, timezone
+import uuid
+
+import redis.asyncio as aioredis
+from fastapi import Depends, HTTPException, Security, status
+from fastapi.security import APIKeyHeader
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from app.db.session import AsyncSessionLocal
-from app.models.organisation import Organisation
-from app.services.auth_service import AuthService
 from app.config import settings
+from app.db.session import AsyncSessionLocal
+from app.models.contributor_user import ContributorUser
+from app.models.organisation import Organisation
+from app.services.auth_service import AuthService, decode_access_token, oauth2_scheme
 
-# Dependency pour la session DB
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         try:
@@ -20,7 +23,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         finally:
             await session.close()
 
-# Dependency pour vérifier l'API Key
+
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=True)
 
 
@@ -34,13 +37,12 @@ async def invalidate_api_key_cache() -> None:
         if cursor == 0:
             break
 
+
 async def verify_api_key(
     api_key: str = Security(api_key_header),
     db: AsyncSession = Depends(get_db),
 ) -> uuid.UUID:
     r = aioredis.from_url(settings.REDIS_URL)
-
-    # Vérification en base de données + mise en cache
     now = datetime.now(timezone.utc)
     result = await db.execute(
         select(Organisation).where(
@@ -56,23 +58,52 @@ async def verify_api_key(
         try:
             key_is_valid = AuthService.verify_key(api_key, org.api_key_hash, org.api_key_salt)
         except (ValueError, TypeError):
-            # Skip malformed legacy key material instead of failing the request.
             continue
         if key_is_valid:
             org.api_key_last_used_at = now
+            await db.commit()
             try:
-                await db.commit()
+                await r.setex(f"apikey:{api_key}", 300, str(org.id))
             except Exception:
-                await db.rollback()
-                raise
-            try:
-                await r.setex(f"apikey:{api_key}", 300, str(org.id))   # cache 5 minutes
-            except Exception:
-                # Cache should never block API key verification.
                 pass
             return org.id
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or revoked API key")
 
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid or revoked API key"
+
+async def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> ContributorUser:
+    try:
+        payload = decode_access_token(token)
+        user_id = uuid.UUID(payload["sub"])
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+    result = await db.execute(
+        select(ContributorUser)
+        .options(selectinload(ContributorUser.organisation))
+        .where(ContributorUser.id == user_id)
     )
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    return user
+
+
+async def require_admin(user: ContributorUser = Depends(get_current_user)) -> ContributorUser:
+    if user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator access required")
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator account is inactive")
+    return user
+
+
+async def require_contributor(user: ContributorUser = Depends(get_current_user)) -> ContributorUser:
+    if user.role != "contributor":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Contributor access required")
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Contributor account is inactive")
+    if user.org_id is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Contributor organisation is missing")
+    return user
