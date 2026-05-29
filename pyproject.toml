@@ -15,6 +15,7 @@ dependencies = [
     "slowapi",
     "python-jose[cryptography]",
     "web3>=7.0.0",
+    "httpx>=0.24.0",
 ]
 
 [project.optional-dependencies]

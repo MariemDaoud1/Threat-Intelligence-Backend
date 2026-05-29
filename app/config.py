@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     ETH_CHAIN_ID: int = 11155111
     ETH_CONTRACT_ADDRESS: str = ""
     ETH_TX_TIMEOUT_SECONDS: int = 120
+    OLLAMA_BASE_URL: str = "http://host.docker.internal:11434"
+    OLLAMA_MODEL: str = "qwen2.5:7b"
+    OLLAMA_TIMEOUT_SECONDS: float = 25.0
     CORS_ALLOW_ORIGINS: list[str] | str = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
